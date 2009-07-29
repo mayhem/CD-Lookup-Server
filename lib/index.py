@@ -56,12 +56,16 @@ class CDLookupIndex(object):
     def convert_toc_to_durations(self, toc):
         '''Convert a sector based toc to a simple array of durations in milliseconds'''
 
-        first, num_tracks, leadout, offsets = toc.split(' ', 3)
-        num_tracks = int(num_tracks)
+        durations = []
+        try:
+            first, num_tracks, leadout, offsets = toc.split(' ', 3)
+            num_tracks = int(num_tracks)
+        except ValueError:
+            return durations
+
         offsets = offsets.split()
         offsets.append(leadout)
 
-        durations = []
         for i in xrange(len(offsets) - 1):
             durations.append((int(offsets[i + 1]) - int(offsets[i])) * 1000 / SECTORS_PER_SECOND)
 

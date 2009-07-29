@@ -2,8 +2,7 @@
 
 import cgi
 import sys
-from cgi import FieldStorage;
-from werkzeug import run_simple
+import cherrypy
 from index import CDLookupIndex
 
 DISTANCE_THRESHOLD = 10000
@@ -15,36 +14,38 @@ def bad_request(start_response, msg):
     start_response('403 BAD REQUEST', [('Content-Type', 'text/plain')])
     return msg 
 
-def cdlookup_server(environ, start_response):
-    """WSGI server application for cdlookup server. This handler validates requests and carries out lookups"""
+class CDLookupServer(object):
 
-    global cdlookup_index
+    @cherrypy.expose
+    def index(self):
+        return "<html><body>This is the CD Lookup server.</body></html>\n";
 
-    if environ['REQUEST_METHOD'].upper() != 'GET':
-        return bad_request(start_response, "Only GET method accepted\n")
+    @cherrypy.expose
+    def default(self, ws, ver, resource, toc, dist = DISTANCE_THRESHOLD):
 
-    url = environ["PATH_INFO"]
-    if not url.startswith("/ws/1/toc"): 
-        return bad_request(start_response, "Invalid URL requested. Only /ws/1/toc/<toc> is supported.\n")
-    toc = url[10:].replace("+", " ")
+        if cherrypy.request.method != 'GET':
+            raise cherrypy.HTTPError(400, "Only GET method is supported")
 
-    args = FieldStorage(environ=environ)
-    if not cdlookup_index.validate_toc(toc):
-        return bad_request(start_response, "Invalid toc passed.\n")
+        if ws != 'ws' or ver != '1' or resource != 'toc':
+            raise cherrypy.HTTPError(404, "Not found. Only the /ws/1/toc resource is available.")
 
-    try:
-        distance = int(args.getvalue('dist', 0))
-        print distance
-        if distance < 0.0:
-            return bad_request(start_response, "The distance parameter must be a positive int value.\n")
-    except KeyError:
-        distance = DISTANCE_THRESHOLD
+        # Remove + from the toc
+        toc = toc.replace('+', ' ')
+        if not cdlookup_index.validate_toc(toc):
+            raise cherrypy.HTTPError(400, "Invalid toc.")
 
-    start_response('200 OK', [('Content-Type', 'text/plain')])
-    return cdlookup_index.lookup(toc, distance)
+        # check distance
+        try:
+            dist = int(dist)
+            if dist < 0: raise ValueError
+        except ValueError:
+            raise cherrypy.HTTPError(400, "The dist parameter must be a positive int value.\n")
+
+        cherrypy.response.headers["Content-Type"] = "application/json"
+        return cdlookup_index.lookup(toc, dist)
 
 # create the lookup index
 cdlookup_index = CDLookupIndex("localhost", "musicbrainz_db_ngs", "musicbrainz_user", "")
 
 # Run a development server
-run_simple('localhost', 8000, cdlookup_server, use_reloader=True, threaded=True, processes = 0);
+cherrypy.quickstart(CDLookupServer())
