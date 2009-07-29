@@ -5,7 +5,8 @@ import sys
 import cherrypy
 from index import CDLookupIndex
 
-DISTANCE_THRESHOLD = 10000
+# How many milliseconds two CDs can be apart and still be considered a match
+DISTANCE_THRESHOLD = 30000
 
 cdlookup_index = None
 

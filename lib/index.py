@@ -6,7 +6,7 @@ import scikits.ann as ann
 import time
 from math import sqrt
 
-IDS_PER_CHUNK            = 20 #00
+IDS_PER_CHUNK            = 2000
 KDTREE_DIM               = 6 
 NUM_TRACKS_PER_TRACKLIST = KDTREE_DIM - 1
 NUM_TRACKS_SCALE_FACTOR  = 10000
@@ -109,17 +109,12 @@ class CDLookupIndex(object):
 
         point = self.select_tracks(self.convert_toc_to_durations(toc))
         ret = self.kdtree.knn(point, 10)
-        print ret
 
-        print len(self.tracklists)
         r2 = thresholdDistance * thresholdDistance
         out = []
         for p, dist in zip(ret[0][0], ret[1][0]):
-            print "%d -> %d" % (p, self.tracklists[p])
-            print dist
-            print
             if dist < r2:
-                out.append("{%d, %f}" % (self.tracklists[p], sqrt(dist)))
+                out.append("[%d,%d]" % (self.tracklists[p], int(sqrt(dist))))
         return "[" + ",".join(out) + "]\n"
 
     def load_data(self):
@@ -137,22 +132,24 @@ class CDLookupIndex(object):
         # Get the number of rows we need to process
         curs = conn.cursor()
 
-        # TODO: This overestimates!!
+        # TODO: This overestimates!! This query needs to filter out tracklists with 0 length tracks
+        # TODO: Filter out tracklists that have fewer than MIN_NUMBER_OF_TRACKS tracks
         curs.execute("SELECT count(*) FROM musicbrainz.tracklist")
         rows = curs.fetchall()
         totalRows = rows[0][0]
         if not totalRows: return False
 
         points = np.empty((totalRows, KDTREE_DIM))
+        tracklistIndexes = []
+        tracklistIndexes.extend([0] * totalRows)
 
         rowsProcessed = 0
         numChunks = (totalRows / IDS_PER_CHUNK) + 1
 
         # For debugging
-        numChunks = 1
-        tracklistIndexes = []
+#        numChunks = 10
         for i in xrange(numChunks):
-            # TODO: Filter out tracklists that have fewere than MIN_NUMBER_OF_TRACKS tracks
+            # TODO: Filter out tracklists that have fewer than MIN_NUMBER_OF_TRACKS tracks
             curs.execute("""SELECT t.tracklist, r.length 
                               FROM musicbrainz.track t, musicbrainz.recording r 
                              WHERE t.recording = r.id 
@@ -170,7 +167,7 @@ class CDLookupIndex(object):
                     if not invalid and len(durations) >= MIN_NUMBER_OF_TRACKS:
                         point = self.select_tracks(durations)
                         np.put(points[rowsProcessed], xrange(0, KDTREE_DIM), point)
-                        tracklistIndexes.append(row[0])
+                        tracklistIndexes[rowsProcessed] = curTracklist
                         rowsProcessed += 1
                     durations = []
                     invalid = False
