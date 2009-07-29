@@ -1,4 +1,28 @@
-If scikits.ann fails to test:
+Instructions for installing the cdlookup server
+===============================================
+
+GENERAL PREREQUISITES:
+
+In order to run this software you will need to have a fully functioning copy
+of MusicBrainz NGS -- complete with Postgres 8.3 setup and a full dataset loaded.
+
+For more info, start here:
+
+   http://bugs.musicbrainz.org/browser/mb_server/trunk/INSTALL
+
+
+SOFTWARE PREREQUISITES:
+
+Python 2.5 or 2.6  - http://python.org
+PsychopgTwo        - http://www.initd.org/tracker/psycopg/wiki/PsycopgTwo
+ANN                - http://www.cs.umd.edu/~mount/ANN/
+numpy              - http://numpy.scipy.org
+scikits.ann        - http://pypi.python.org/pypi/scikits.ann
+
+Installing ANN into a standard location (e.g. /usr/local) is recommended, which makes it
+easier to install scikits.ann.
+
+If scikits.ann fails to test, here is a relevant blog post that got me up and running:
 
   http://blog.physionconsulting.com/?p=11
 

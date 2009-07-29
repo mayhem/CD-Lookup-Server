@@ -89,16 +89,14 @@ class CDLookupIndex(object):
             point.extend([0] * (NUM_TRACKS_PER_TRACKLIST - len(tracks)))
             return point
 
-        # Setup the point array and pick the first and last track
+        # Size the array to our dimesion
         point.extend([0] * NUM_TRACKS_PER_TRACKLIST)
-        point[1] = tracks[0]
-        point[KDTREE_DIM - 1] = tracks[len(tracks) - 1]
 
-        # Now pick the remaining tracks as evenly spaced across the list as possible
-        spread = int((len(tracks) - 2) / (float)(KDTREE_DIM - 3));
-        for dest in xrange(0, KDTREE_DIM-3):
-            src = int(spread * (dest + 1))
-            point[dest + 2] = tracks[src]
+        # Sum the durations of ranges of tracks so that they fit into the given dimension
+        step = float(len(tracks)) / NUM_TRACKS_PER_TRACKLIST
+        for i in xrange(int(len(tracks) / step)):
+            for j in xrange(int(i * step), int((i+1) * step)):
+                point[i+1] += tracks[j]
 
         return point
 
@@ -132,19 +130,24 @@ class CDLookupIndex(object):
         # Get the number of rows we need to process
         curs = conn.cursor()
 
-        # TODO: This overestimates!! This query needs to filter out tracklists with 0 length tracks
-        # TODO: Filter out tracklists that have fewer than MIN_NUMBER_OF_TRACKS tracks
+        # This query overestimates the number of tracklists that are really needed.
+        # It is expensive to calculate the right number, so we'll allocate too much memory,
+        # load the points and then resize the points array to free up wasted space.
         curs.execute("SELECT count(*) FROM musicbrainz.tracklist")
         rows = curs.fetchall()
         totalRows = rows[0][0]
         if not totalRows: return False
 
+        curs.execute("SELECT max(id) FROM musicbrainz.tracklist")
+        rows = curs.fetchall()
+        maxId = rows[0][0]
+        if not maxId: return False
+
         points = np.empty((totalRows, KDTREE_DIM))
         tracklistIndexes = []
-        tracklistIndexes.extend([0] * totalRows)
 
         rowsProcessed = 0
-        numChunks = (totalRows / IDS_PER_CHUNK) + 1
+        numChunks = (maxId / IDS_PER_CHUNK) + 1
 
         # For debugging
 #        numChunks = 10
@@ -167,7 +170,7 @@ class CDLookupIndex(object):
                     if not invalid and len(durations) >= MIN_NUMBER_OF_TRACKS:
                         point = self.select_tracks(durations)
                         np.put(points[rowsProcessed], xrange(0, KDTREE_DIM), point)
-                        tracklistIndexes[rowsProcessed] = curTracklist
+                        tracklistIndexes.append(curTracklist)
                         rowsProcessed += 1
                     durations = []
                     invalid = False
@@ -176,13 +179,19 @@ class CDLookupIndex(object):
                 durations.append(row[1])
                 curTracklist = row[0]
 
-            if i > 0 and i % 5000 == 0:
-                print "%d%% loaded" % int(100 * rowsProcessed / totalRows)
+            if (curTracklist+1) % 50000 == 0:
+                print "%d%% loaded" % (int(100 * curTracklist / maxId))
 
         conn.close()
 
         print "processed %d rows." % rowsProcessed
+
+        # resize the point array since our query was sloppy and contained rows that we threw out
+        points = np.resize(points, (rowsProcessed, KDTREE_DIM))
+
+        # now build the actual kdtree
         print "build tree"
         tree = ann.kdtree(points)
         print "init done"
+
         return tree, tracklistIndexes
